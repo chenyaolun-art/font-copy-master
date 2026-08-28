@@ -1,6 +1,6 @@
 ---
 name: font-effect-prompt-builder
-description: Use when a user supplies a screenshot or reference image of stylized lettering and wants to reconstruct its font/effects or create a GPT Image 2 prompt; analyze and archive cases, but do not generate images.
+description: Use when a user provides a screenshot or reference image of stylized lettering and wants its font, lettering treatment, or ChatGPT/GPT Image 2 prompt reconstructed for original or replacement copy.
 ---
 
 # 美術字提示詞分析器

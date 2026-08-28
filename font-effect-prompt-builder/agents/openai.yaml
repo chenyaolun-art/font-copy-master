@@ -1,6 +1,6 @@
 interface:
   display_name: "美術字提示詞分析器"
   short_description: "分析美術字截圖，產出中文 Image 2 提示詞並歸檔案例"
-  default_prompt: "請使用 $font-effect-prompt-builder 分析這張美術字截圖，產出中文 GPT Image 2 提示詞。"
+  default_prompt: "Use $font-effect-prompt-builder to analyze this stylized lettering screenshot and create a Chinese GPT Image 2 prompt."
 policy:
   allow_implicit_invocation: true
