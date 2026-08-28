@@ -89,10 +89,18 @@ def _validate_metadata(metadata):
     font_analysis = metadata["font_analysis"]
     if not isinstance(font_analysis, dict):
         raise ArchiveError("font_analysis must be an object")
-    candidates = font_analysis.get("candidates", [])
-    category = font_analysis.get("category", "")
-    evidence = font_analysis.get("evidence", "")
-    custom_modifications = font_analysis.get("custom_modifications", "")
+    required_font_fields = {
+        "candidates", "category", "confidence", "evidence", "custom_modifications",
+    }
+    missing_font_fields = sorted(required_font_fields - set(font_analysis))
+    if missing_font_fields:
+        raise ArchiveError(
+            "font_analysis missing required field: {}".format(", ".join(missing_font_fields))
+        )
+    candidates = font_analysis["candidates"]
+    category = font_analysis["category"]
+    evidence = font_analysis["evidence"]
+    custom_modifications = font_analysis["custom_modifications"]
     if not isinstance(candidates, list) or len(candidates) > 3 or any(
         not isinstance(candidate, str) or not candidate.strip() for candidate in candidates
     ):
@@ -101,7 +109,7 @@ def _validate_metadata(metadata):
         raise ArchiveError("font_analysis category, evidence, and custom_modifications must be text")
     if not candidates and (not isinstance(category, str) or not category.strip()):
         raise ArchiveError("font_analysis requires candidates or category")
-    confidence = font_analysis.get("confidence")
+    confidence = font_analysis["confidence"]
     if not isinstance(confidence, str) or confidence not in {"low", "medium", "high"}:
         raise ArchiveError("font_analysis confidence must be low, medium, or high")
     result["font_analysis"] = dict(font_analysis)

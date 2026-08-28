@@ -2,7 +2,7 @@
 
 歸檔前必須有可讀的本機參考圖絕對路徑，且 `confirmed` 必須為 `true`。metadata JSON 的必填欄位為：`confirmed`、`source_text`、`target_text`、`language`、`script`、`font_analysis`、`visual_analysis`、`original_prompt`、`final_prompt`、`style_tags`、`effect_tags`、`classification_notes`。
 
-`font_analysis` 必含 `candidates`（最多 3 個）、`category`、`confidence`（`low`、`medium` 或 `high`）、`evidence`、`custom_modifications`。`style_tags`、`effect_tags`、語種與文字系統必須使用分類法的正規值；使用 `other` 時，`classification_notes` 不可為空。
+`font_analysis` 必含 `candidates`（最多 3 個）、`category`、`confidence`（`low`、`medium` 或 `high`）、`evidence`、`custom_modifications`。`style_tags` 與 `effect_tags` 必須是非空清單；兩者以及語種與文字系統必須使用分類法的正規值；使用 `other` 時，`classification_notes` 不可為空。
 
 ```json
 {
@@ -30,7 +30,7 @@
 先將 metadata 寫入暫存 JSON，並解析此技能的 `scripts/archive_case.py` 絕對路徑；只以絕對路徑執行：
 
 ```text
-python /絕對路徑/font-effect-prompt-builder/scripts/archive_case.py --metadata /絕對路徑/metadata.json --image /絕對路徑/reference.png
+python3 /絕對路徑/font-effect-prompt-builder/scripts/archive_case.py --metadata /絕對路徑/metadata.json --image /絕對路徑/reference.png
 ```
 
 成功 JSON 會提供 `case_id`、`case_dir` 和 `index_path`（索引）。重複的參考圖會因 SHA-256 去重而失敗，不可宣稱儲存成功。歸檔會保留原始副檔名但轉為小寫。
