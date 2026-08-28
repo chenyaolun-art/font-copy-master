@@ -31,8 +31,8 @@ class ArchiveCaseTests(unittest.TestCase):
         self.library = self.root / "library"
         self.library.mkdir(parents=True)
         (self.library / "index.jsonl").write_text("\n", encoding="utf-8")
-        self.image = Path(self.temporary_directory.name) / "reference.PNG"
-        self.image_bytes = b"not-a-real-png-but-nonempty"
+        self.image = Path(self.temporary_directory.name) / "reference.JPEG"
+        self.image_bytes = b"not-a-real-jpeg-but-nonempty"
         self.image.write_bytes(self.image_bytes)
         self.metadata = {
             "confirmed": True,
@@ -60,19 +60,27 @@ class ArchiveCaseTests(unittest.TestCase):
             self.metadata, self.image, self.root, today=date(2026, 8, 28)
         )
 
-        self.assertRegex(case_id, r"^20260828-[0-9a-f]{12}$")
+        expected_case_id = "20260828-{}".format(
+            hashlib.sha256(self.image_bytes).hexdigest()[:12]
+        )
+        self.assertEqual(case_id, expected_case_id)
         case_directory = self.library / "cases" / case_id
         self.assertTrue((case_directory / "case.md").is_file())
         self.assertEqual(
-            (case_directory / "reference.png").read_bytes(), self.image_bytes
+            (case_directory / "reference.jpeg").read_bytes(), self.image_bytes
         )
         index_lines = (self.library / "index.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(index_lines), 1)
         record = json.loads(index_lines[0])
         self.assertEqual(record["case_id"], case_id)
+        self.assertEqual(record["created_at"], "2026-08-28")
+        self.assertTrue(record["reference"].endswith("reference.jpeg"))
         self.assertEqual(record["source_text"], "夏日氣泡")
         self.assertEqual(record["target_text"], "週末放風計畫")
         self.assertEqual(record["style_tags"], ["cute", "playful"])
+        self.assertEqual(
+            record["effect_tags"], ["extrusion-3d", "glossy", "gradient", "outline"]
+        )
 
     def test_missing_final_prompt_leaves_no_archive(self):
         metadata = dict(self.metadata)
@@ -128,10 +136,19 @@ class ArchiveCaseTests(unittest.TestCase):
 
     def test_index_replace_failure_rolls_back_destination_case(self):
         real_replace = os.replace
+        replace_calls = 0
+
+        def replace_once_then_fail(source, destination):
+            nonlocal replace_calls
+            replace_calls += 1
+            if replace_calls == 1:
+                return real_replace(source, destination)
+            raise OSError("index swap failed")
+
         with mock.patch.object(
             archive_case.os,
             "replace",
-            side_effect=[real_replace, OSError("index swap failed")],
+            side_effect=replace_once_then_fail,
         ):
             with self.assertRaisesRegex(OSError, "index swap failed"):
                 archive_case.archive_case(

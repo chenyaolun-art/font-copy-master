@@ -153,7 +153,7 @@ def _read_index(index_path):
     return records
 
 
-def _case_markdown(metadata, case_id, archive_day, sha256):
+def _case_markdown(metadata, case_id, archive_day, sha256, image_name):
     analysis = metadata["font_analysis"]
     candidates = ", ".join(analysis.get("candidates", [])) or "—"
     return "\n".join(
@@ -161,7 +161,7 @@ def _case_markdown(metadata, case_id, archive_day, sha256):
             "# Lettering case {}".format(case_id),
             "",
             "- Date: {}".format(archive_day.isoformat()),
-            "- Reference: reference.png",
+            "- Reference: {}".format(image_name),
             "- SHA-256: {}".format(sha256),
             "- Language: {}".format(metadata["language"]),
             "- Script: {}".format(metadata["script"]),
@@ -207,6 +207,7 @@ def archive_case(metadata, image_path, skill_root, today=None):
     """Validate and atomically archive one lettering case, returning its case ID."""
     metadata = _validate_metadata(metadata)
     image_path, sha256 = _read_image(image_path)
+    image_name = "reference{}".format(image_path.suffix.lower())
     archive_day = today or date.today()
     if not isinstance(archive_day, date):
         raise ArchiveError("today must be a date")
@@ -225,7 +226,7 @@ def archive_case(metadata, image_path, skill_root, today=None):
     record = {
         "case_id": case_id,
         "created_at": archive_day.isoformat(),
-        "reference": "cases/{}/reference.png".format(case_id),
+        "reference": "cases/{}/{}".format(case_id, image_name),
         "sha256": sha256,
         "source_text": metadata["source_text"],
         "target_text": metadata["target_text"],
@@ -241,9 +242,10 @@ def archive_case(metadata, image_path, skill_root, today=None):
         staging_parent = Path(staging_parent)
         staged_case = staging_parent / case_id
         staged_case.mkdir()
-        shutil.copyfile(str(image_path), str(staged_case / "reference.png"))
+        shutil.copyfile(str(image_path), str(staged_case / image_name))
         (staged_case / "case.md").write_text(
-            _case_markdown(metadata, case_id, archive_day, sha256), encoding="utf-8"
+            _case_markdown(metadata, case_id, archive_day, sha256, image_name),
+            encoding="utf-8",
         )
         staged_index = staging_parent / "index.jsonl"
         staged_index.write_text(
