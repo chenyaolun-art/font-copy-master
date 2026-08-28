@@ -8,7 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -302,6 +302,114 @@ class ArchiveCaseTests(unittest.TestCase):
 
         self.assertEqual(result, 2)
         self.assertTrue(errors.getvalue().startswith("archive failed:"))
+
+    def test_post_swap_keyboard_interrupt_returns_committed_archive(self):
+        real_replace = os.replace
+        replace_calls = 0
+
+        def replace_then_interrupt(source, destination):
+            nonlocal replace_calls
+            replace_calls += 1
+            real_replace(source, destination)
+            if replace_calls == 2:
+                raise KeyboardInterrupt("interrupted after index swap")
+
+        with mock.patch.object(
+            archive_case.os, "replace", side_effect=replace_then_interrupt
+        ):
+            result = archive_case.archive_case(
+                self.metadata, self.image, self.root, today=date(2026, 8, 28)
+            )
+
+        case_directory = Path(result["case_dir"])
+        self.assertTrue(case_directory.is_dir())
+        self.assertFalse((case_directory / ".pending-index").exists())
+        records = [
+            json.loads(line)
+            for line in (self.library / "index.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(records[0]["case_id"], result["case_id"])
+
+    def test_unreadable_index_after_interruption_preserves_marked_case(self):
+        real_replace = os.replace
+        replace_calls = 0
+        original_read_index = archive_case._read_index
+        read_calls = 0
+
+        def interrupt_index_swap(source, destination):
+            nonlocal replace_calls
+            replace_calls += 1
+            if replace_calls == 1:
+                return real_replace(source, destination)
+            raise KeyboardInterrupt("interrupted before index swap")
+
+        def unreadable_on_recheck(index_path):
+            nonlocal read_calls
+            read_calls += 1
+            if read_calls == 1:
+                return original_read_index(index_path)
+            raise OSError("index unavailable")
+
+        with mock.patch.object(
+            archive_case.os, "replace", side_effect=interrupt_index_swap
+        ), mock.patch.object(archive_case, "_read_index", side_effect=unreadable_on_recheck):
+            with self.assertRaises(KeyboardInterrupt):
+                archive_case.archive_case(
+                    self.metadata, self.image, self.root, today=date(2026, 8, 28)
+                )
+
+        expected_case_id = "20260828-{}".format(
+            hashlib.sha256(self.image_bytes).hexdigest()[:12]
+        )
+        marker = self.library / "cases" / expected_case_id / ".pending-index"
+        self.assertTrue(marker.is_file())
+
+    def test_marker_unlink_failure_after_commit_returns_success(self):
+        with mock.patch.object(Path, "unlink", side_effect=OSError("marker busy")):
+            result = archive_case.archive_case(
+                self.metadata, self.image, self.root, today=date(2026, 8, 28)
+            )
+
+        case_directory = Path(result["case_dir"])
+        self.assertTrue(case_directory.is_dir())
+        self.assertTrue((case_directory / ".pending-index").is_file())
+        self.assertEqual(
+            len((self.library / "index.jsonl").read_text(encoding="utf-8").splitlines()),
+            1,
+        )
+
+    def test_marker_unlink_failure_during_recovery_does_not_block_archive(self):
+        first = archive_case.archive_case(
+            self.metadata, self.image, self.root, today=date(2026, 8, 28)
+        )
+        first_marker = Path(first["case_dir"]) / ".pending-index"
+        first_marker.write_text("pending\n", encoding="utf-8")
+        second_image = Path(self.temporary_directory.name) / "second.png"
+        second_image.write_bytes(b"second nonempty image")
+
+        with mock.patch.object(Path, "unlink", side_effect=OSError("marker busy")):
+            result = archive_case.archive_case(
+                self.metadata, second_image, self.root, today=date(2026, 8, 28)
+            )
+
+        self.assertTrue(Path(result["case_dir"]).is_dir())
+        self.assertTrue(first_marker.is_file())
+        self.assertEqual(
+            len((self.library / "index.jsonl").read_text(encoding="utf-8").splitlines()),
+            2,
+        )
+
+    def test_datetime_today_is_normalized_to_date(self):
+        result = archive_case.archive_case(
+            self.metadata,
+            self.image,
+            self.root,
+            today=datetime(2026, 8, 28, 13, 14, 15),
+        )
+
+        self.assertRegex(result["case_id"], r"^20260828-[0-9a-f]{12}$")
+        record = json.loads((self.library / "index.jsonl").read_text(encoding="utf-8"))
+        self.assertEqual(record["created_at"], "2026-08-28")
 
 
 if __name__ == "__main__":

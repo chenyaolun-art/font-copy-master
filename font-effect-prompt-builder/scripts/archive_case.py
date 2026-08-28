@@ -10,7 +10,7 @@ import sys
 import tempfile
 import threading
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 
@@ -199,9 +199,24 @@ def _reconcile_marked_cases(cases_directory, records):
         if not marker.is_file():
             continue
         if candidate.name in indexed_case_ids:
-            marker.unlink()
+            _remove_pending_marker(candidate)
         else:
             shutil.rmtree(candidate)
+
+
+def _remove_pending_marker(case_directory):
+    """Remove a recovery marker without turning an archive commit into a failure."""
+    try:
+        (case_directory / PENDING_MARKER).unlink()
+    except OSError:
+        pass
+
+
+def _index_has_record(records, case_id, sha256):
+    return any(
+        record.get("case_id") == case_id and record.get("sha256") == sha256
+        for record in records
+    )
 
 
 def _case_markdown(metadata, case_id, archive_day, sha256, image_name):
@@ -258,7 +273,9 @@ def archive_case(metadata, image_path, skill_root, today=None):
     """Validate and atomically archive one lettering case, returning its paths."""
     metadata = _validate_metadata(metadata)
     archive_day = today or date.today()
-    if not isinstance(archive_day, date):
+    if isinstance(archive_day, datetime):
+        archive_day = archive_day.date()
+    elif not isinstance(archive_day, date):
         raise ArchiveError("today must be a date")
 
     library = Path(skill_root) / "library"
@@ -312,22 +329,35 @@ def archive_case(metadata, image_path, skill_root, today=None):
 
             cases_directory.mkdir(exist_ok=True)
             case_replaced = False
-            index_replaced = False
+            current_records = None
             try:
                 os.replace(str(staged_case), str(destination))
                 case_replaced = True
                 os.replace(str(staged_index), str(index_path))
-                index_replaced = True
             except BaseException:
-                if case_replaced and not index_replaced:
-                    shutil.rmtree(destination, ignore_errors=True)
-                if not had_cases_directory:
+                if case_replaced:
+                    try:
+                        current_records = _read_index(index_path)
+                    except (ArchiveError, OSError, UnicodeError, json.JSONDecodeError):
+                        current_records = None
+                    if current_records is not None and _index_has_record(
+                        current_records, case_id, sha256
+                    ):
+                        _remove_pending_marker(destination)
+                        return {
+                            "case_id": case_id,
+                            "case_dir": str(destination.resolve()),
+                            "index_path": str(index_path.resolve()),
+                        }
+                    if current_records is not None:
+                        shutil.rmtree(destination, ignore_errors=True)
+                if not had_cases_directory and current_records is not None:
                     try:
                         cases_directory.rmdir()
                     except OSError:
                         pass
                 raise
-            (destination / PENDING_MARKER).unlink()
+            _remove_pending_marker(destination)
             return {
                 "case_id": case_id,
                 "case_dir": str(destination.resolve()),

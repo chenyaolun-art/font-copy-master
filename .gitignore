@@ -2,3 +2,4 @@
 .worktrees/
 __pycache__/
 *.py[cod]
+font-effect-prompt-builder/library/.archive.lock
