@@ -165,6 +165,20 @@ class ArchiveCaseTests(unittest.TestCase):
         self.assertFalse((self.library / "cases").exists())
         self.assertEqual((self.library / "index.jsonl").read_text(encoding="utf-8"), "\n")
 
+    def test_case_move_failure_removes_new_empty_cases_directory(self):
+        original_index = (self.library / "index.jsonl").read_text(encoding="utf-8")
+
+        with mock.patch.object(
+            archive_case.os, "replace", side_effect=OSError("case move failed")
+        ):
+            with self.assertRaisesRegex(OSError, "case move failed"):
+                archive_case.archive_case(
+                    self.metadata, self.image, self.root, today=date(2026, 8, 28)
+                )
+
+        self.assertEqual((self.library / "index.jsonl").read_text(encoding="utf-8"), original_index)
+        self.assertFalse((self.library / "cases").exists())
+
     def test_concurrent_distinct_archives_keep_both_cases_and_records(self):
         second_image = Path(self.temporary_directory.name) / "second.png"
         second_image.write_bytes(b"second nonempty image")

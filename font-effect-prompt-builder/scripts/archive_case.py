@@ -351,7 +351,7 @@ def archive_case(metadata, image_path, skill_root, today=None):
                         }
                     if current_records is not None:
                         shutil.rmtree(destination, ignore_errors=True)
-                if not had_cases_directory and current_records is not None:
+                if not had_cases_directory:
                     try:
                         cases_directory.rmdir()
                     except OSError:
