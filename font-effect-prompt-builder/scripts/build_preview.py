@@ -748,6 +748,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     }
 
     .tab-button,
+    .expand-prompt-button,
     .copy-button {
       min-height: 40px;
       padding: 8px 12px;
@@ -762,6 +763,11 @@ HTML_TEMPLATE = r"""<!doctype html>
       border-color: rgba(185, 217, 220, 0.52);
       color: var(--ice-strong);
       background: rgba(185, 217, 220, 0.1);
+    }
+
+    .expand-prompt-button {
+      border-color: rgba(185, 217, 220, 0.28);
+      color: var(--ice-strong);
     }
 
     .copy-button {
@@ -782,6 +788,70 @@ HTML_TEMPLATE = r"""<!doctype html>
       font: 12px/1.75 var(--mono);
       white-space: pre-wrap;
       word-break: break-word;
+    }
+
+    dialog.prompt-focus {
+      height: calc(100vh - 32px);
+      width: min(1380px, calc(100% - 32px));
+    }
+
+    .prompt-focus .dialog-layout {
+      grid-template-columns: minmax(0, 1fr);
+      height: 100%;
+      max-height: none;
+      overflow: hidden;
+    }
+
+    .prompt-focus .dialog-visual,
+    .prompt-focus .dialog-content > :not(.close-button):not(.prompt-section) {
+      display: none;
+    }
+
+    .prompt-focus .dialog-content {
+      display: grid;
+      height: 100%;
+      min-height: 0;
+      padding: 28px;
+      overflow: hidden;
+      border: 0;
+    }
+
+    .prompt-focus .close-button {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      float: none;
+      margin: 0;
+    }
+
+    .prompt-focus .prompt-section {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      height: 100%;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .prompt-focus .prompt-section > h3 {
+      margin: 0 64px 14px 0;
+    }
+
+    .prompt-focus .target-builder {
+      display: none;
+    }
+
+    .prompt-focus .prompt-tabs {
+      flex-wrap: wrap;
+      margin: 0 64px 14px 0;
+    }
+
+    .prompt-focus .prompt-box {
+      height: 100%;
+      min-height: 0;
+      overflow: auto;
+      font-size: 14px;
+      scrollbar-gutter: stable;
     }
 
     .copy-status {
@@ -1009,7 +1079,7 @@ HTML_TEMPLATE = r"""<!doctype html>
           <h3>效果与排版</h3>
           <p id="detail-visual"></p>
         </section>
-        <section class="detail-section">
+        <section class="detail-section prompt-section">
           <h3>GPT Image 2 Prompt</h3>
           <div class="target-builder">
             <label for="target-copy-input">换成你的目标文案</label>
@@ -1025,6 +1095,7 @@ HTML_TEMPLATE = r"""<!doctype html>
             <button id="original-tab" class="tab-button" type="button" role="tab" aria-selected="false">原始提示词</button>
             <button id="final-tab" class="tab-button" type="button" role="tab" aria-selected="true">终版提示词</button>
             <button id="generated-tab" class="tab-button" type="button" role="tab" aria-selected="false" hidden>你的提示词</button>
+            <button id="expand-prompt" class="expand-prompt-button" type="button" aria-controls="prompt-box" aria-expanded="false">展开提示词</button>
             <button id="copy-prompt" class="copy-button" type="button">复制终版提示词</button>
           </div>
           <pre id="prompt-box" class="prompt-box" tabindex="0"></pre>
@@ -1065,6 +1136,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     const originalTab = document.getElementById("original-tab");
     const finalTab = document.getElementById("final-tab");
     const generatedTab = document.getElementById("generated-tab");
+    const expandPromptButton = document.getElementById("expand-prompt");
     const copyButton = document.getElementById("copy-prompt");
     const promptBox = document.getElementById("prompt-box");
     const copyStatus = document.getElementById("copy-status");
@@ -1247,6 +1319,16 @@ HTML_TEMPLATE = r"""<!doctype html>
       copyStatus.textContent = "";
     }
 
+    function setPromptFocus(enabled) {
+      dialog.classList.toggle("prompt-focus", enabled);
+      expandPromptButton.setAttribute("aria-expanded", String(enabled));
+      expandPromptButton.textContent = enabled ? "返回字体详情" : "展开提示词";
+      if (enabled) {
+        promptBox.scrollTop = 0;
+        requestAnimationFrame(() => promptBox.focus({ preventScroll: true }));
+      }
+    }
+
     function generateTargetPrompt() {
       const targetText = targetCopyInput.value.replace(/\r\n?/g, "\n").trim();
       if (!targetText) {
@@ -1259,6 +1341,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       state.promptKind = "generated";
       targetStatus.textContent = "已按当前字效生成，可在下方检查并复制。";
       renderPrompt();
+      setPromptFocus(true);
     }
 
     function openDetail(item) {
@@ -1286,6 +1369,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       tags.replaceChildren();
       [item.language, ...allTags(item)].filter(Boolean).forEach((tag) => tags.append(makeTag(tag)));
       renderPrompt();
+      setPromptFocus(false);
       dialog.showModal();
       document.getElementById("close-dialog").focus();
     }
@@ -1375,8 +1459,12 @@ HTML_TEMPLATE = r"""<!doctype html>
     });
 
     generateButton.addEventListener("click", generateTargetPrompt);
+    expandPromptButton.addEventListener("click", () => {
+      setPromptFocus(!dialog.classList.contains("prompt-focus"));
+    });
     copyButton.addEventListener("click", copyPrompt);
     document.getElementById("close-dialog").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => setPromptFocus(false));
     dialog.addEventListener("click", (event) => {
       if (event.target === dialog) dialog.close();
     });

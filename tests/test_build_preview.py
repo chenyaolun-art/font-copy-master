@@ -193,6 +193,21 @@ FINAL PROMPT
         self.assertNotIn("max-height: 310px;", prompt_box_css)
         self.assertNotIn("overflow: auto;", prompt_box_css)
 
+    def test_generated_prompt_opens_a_full_height_focus_view(self):
+        build_preview = load_preview_module(self)
+
+        result = build_preview.build_gallery(self.library)
+        html = Path(result["preview_path"]).read_text(encoding="utf-8")
+
+        self.assertIn('id="expand-prompt"', html)
+        self.assertIn("function setPromptFocus(enabled)", html)
+        self.assertIn('dialog.classList.toggle("prompt-focus", enabled)', html)
+        self.assertIn("setPromptFocus(true);", html)
+        self.assertIn(".prompt-focus .prompt-box {", html)
+        focus_css = html.split("    .prompt-focus .prompt-box {", 1)[1].split("    }", 1)[0]
+        self.assertIn("height: 100%;", focus_css)
+        self.assertIn("overflow: auto;", focus_css)
+
     def test_empty_library_renders_empty_state(self):
         build_preview = load_preview_module(self)
         (self.library / "index.jsonl").write_text("", encoding="utf-8")
