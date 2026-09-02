@@ -109,6 +109,18 @@ FINAL PROMPT
         self.assertEqual(case["final_prompt"], "FINAL PROMPT")
         self.assertTrue(case["image_url"].startswith("data:image/png;base64,"))
 
+    def test_load_cases_assigns_stable_numbered_glyph_style_name(self):
+        build_preview = load_preview_module(self)
+
+        cases, warnings = build_preview.load_cases(self.library)
+
+        self.assertEqual(warnings, [])
+        self.assertEqual(cases[0].get("archive_number"), 1)
+        self.assertEqual(
+            cases[0].get("display_name"),
+            "001 · 粗筆行楷毛筆 · 雅致手寫",
+        )
+
     def test_make_prompt_template_replaces_archived_target(self):
         build_preview = load_preview_module(self)
         prompt = (
@@ -180,6 +192,27 @@ FINAL PROMPT
         self.assertIn("navigator.clipboard", html)
         self.assertNotIn("https://", html)
         self.assertNotIn("http://", html)
+
+    def test_gallery_uses_three_equal_cards_per_desktop_row(self):
+        build_preview = load_preview_module(self)
+
+        result = build_preview.build_gallery(self.library)
+        html = Path(result["preview_path"]).read_text(encoding="utf-8")
+        card_css = html.split("    .case-card {", 1)[1].split("    }", 1)[0]
+
+        self.assertIn("grid-column: span 4;", card_css)
+        self.assertIn("grid-template-rows: 230px 170px;", card_css)
+        self.assertNotIn(".case-card:nth-child", html)
+        self.assertIn("heading.textContent = item.display_name", html)
+        self.assertIn(
+            'stage.dataset.index = String(item.archive_number).padStart(3, "0")',
+            html,
+        )
+        self.assertIn('<option value="title">按名称</option>', html)
+        self.assertIn(
+            "String(a.display_name).localeCompare(String(b.display_name)",
+            html,
+        )
 
     def test_prompt_preview_expands_without_nested_scrolling(self):
         build_preview = load_preview_module(self)

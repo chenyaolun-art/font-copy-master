@@ -13,6 +13,17 @@ from pathlib import Path
 
 TARGET_TEXT_TOKEN = "__FONT_EFFECT_TARGET_TEXT__"
 LINE_COUNT_TOKEN = "__FONT_EFFECT_LINE_COUNT__"
+STYLE_LABELS = {
+    "luxury": "奢華",
+    "futuristic": "未來",
+    "elegant": "雅致",
+    "fantasy": "玄幻",
+    "playful": "趣味",
+    "energetic": "熱血",
+    "traditional": "古典",
+    "handwritten": "手寫",
+}
+STYLE_PRIORITY = tuple(STYLE_LABELS)
 
 
 class PreviewError(Exception):
@@ -106,6 +117,27 @@ def make_prompt_template(prompt, target_text="", source_text=""):
     return "{}\n\n{}".format(templated.rstrip(), override)
 
 
+def make_display_name(archive_number, category, style_tags):
+    """Create a stable catalog name using number, glyph class, and style."""
+    glyph = str(category or "").split("／", 1)[0]
+    for noise in ("客製", "遊戲", "游戏", "宣傳型", "宣传型", "展示字"):
+        glyph = glyph.replace(noise, "")
+    glyph = re.sub(r"\s+", "", glyph).strip("·｜- ") or "未分類字形"
+
+    available = [str(tag) for tag in (style_tags or []) if tag]
+    ordered = [tag for tag in STYLE_PRIORITY if tag in available]
+    ordered.extend(tag for tag in available if tag not in ordered)
+    style_labels = []
+    for tag in ordered:
+        label = STYLE_LABELS.get(tag, tag)
+        if label not in style_labels:
+            style_labels.append(label)
+        if len(style_labels) == 2:
+            break
+    style = "".join(style_labels) or "未分類風格"
+    return "{:03d} · {} · {}".format(archive_number, glyph, style)
+
+
 def _read_index(index_path):
     if not index_path.is_file():
         raise PreviewError("index.jsonl is missing: {}".format(index_path))
@@ -142,7 +174,7 @@ def load_cases(library):
     records = _read_index(library / "index.jsonl")
     cases = []
     warnings = []
-    for record in records:
+    for archive_number, record in enumerate(records, 1):
         case_id = record.get("case_id")
         reference = record.get("reference")
         if not isinstance(case_id, str) or not case_id:
@@ -169,6 +201,12 @@ def load_cases(library):
         case["image_url"] = image_url
         case["style_tags"] = list(record.get("style_tags") or [])
         case["effect_tags"] = list(record.get("effect_tags") or [])
+        case["archive_number"] = archive_number
+        case["display_name"] = make_display_name(
+            archive_number,
+            parsed.get("category", ""),
+            case["style_tags"],
+        )
         case["prompt_template"] = make_prompt_template(
             parsed.get("final_prompt") or parsed.get("original_prompt"),
             target_text=parsed.get("target_text", ""),
@@ -433,9 +471,10 @@ HTML_TEMPLATE = r"""<!doctype html>
     }
 
     .case-card {
-      grid-column: span 6;
+      grid-column: span 4;
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: 230px 170px;
+      height: 400px;
       min-width: 0;
       padding: 0;
       overflow: hidden;
@@ -448,16 +487,6 @@ HTML_TEMPLATE = r"""<!doctype html>
       transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
     }
 
-    .case-card:nth-child(4n + 1),
-    .case-card:nth-child(4n + 4) {
-      grid-column: span 7;
-    }
-
-    .case-card:nth-child(4n + 2),
-    .case-card:nth-child(4n + 3) {
-      grid-column: span 5;
-    }
-
     .case-card:hover {
       transform: translateY(-3px);
       border-color: rgba(185, 217, 220, 0.34);
@@ -468,7 +497,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       position: relative;
       display: grid;
       place-items: center;
-      min-height: 250px;
+      min-height: 0;
       padding: 22px;
       overflow: hidden;
       background:
@@ -488,27 +517,30 @@ HTML_TEMPLATE = r"""<!doctype html>
     .preview-stage img {
       display: block;
       width: 100%;
-      max-height: 290px;
+      max-height: 100%;
       object-fit: contain;
       filter: saturate(0.98) contrast(1.01);
     }
 
     .card-copy {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 20px;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 12px;
       align-items: start;
       padding: 18px 18px 19px;
       border-top: 1px solid var(--line);
     }
 
     .card-copy h2 {
+      display: -webkit-box;
+      min-height: 2.7em;
       margin: 0;
       overflow: hidden;
       color: var(--paper);
-      font: 500 clamp(22px, 3vw, 34px)/1.25 var(--display);
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font: 500 clamp(18px, 1.7vw, 25px)/1.35 var(--display);
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
 
     .category {
@@ -516,6 +548,11 @@ HTML_TEMPLATE = r"""<!doctype html>
       color: #aab3bd;
       font-size: 12px;
       line-height: 1.45;
+    }
+
+    .card-copy .tag-list {
+      justify-content: flex-start;
+      max-width: none;
     }
 
     .tag-list {
@@ -876,8 +913,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     }
 
     @media (max-width: 900px) {
-      .case-card,
-      .case-card:nth-child(n) {
+      .case-card {
         grid-column: span 12;
       }
 
@@ -995,8 +1031,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         grid-template-columns: minmax(0, 1fr);
       }
 
-      .case-card,
-      .case-card:nth-child(n) {
+      .case-card {
         grid-column: 1 / -1;
       }
 
@@ -1039,7 +1074,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         <select id="sort-select" aria-label="排序方式">
           <option value="newest">最新归档</option>
           <option value="oldest">最早归档</option>
-          <option value="title">按文案</option>
+          <option value="title">按名称</option>
         </select>
         <button id="clear-button" class="ghost-button" type="button">清除筛选</button>
       </div>
@@ -1211,6 +1246,7 @@ HTML_TEMPLATE = r"""<!doctype html>
           item.case_id,
           item.source_text,
           item.target_text,
+          item.display_name,
           item.category,
           item.evidence,
           item.language,
@@ -1226,14 +1262,14 @@ HTML_TEMPLATE = r"""<!doctype html>
           return String(a.created_at).localeCompare(String(b.created_at));
         }
         if (state.sort === "title") {
-          return String(a.source_text).localeCompare(String(b.source_text), "zh-Hant");
+          return String(a.display_name).localeCompare(String(b.display_name), "zh-Hant");
         }
         return String(b.created_at).localeCompare(String(a.created_at))
           || String(b.case_id).localeCompare(String(a.case_id));
       });
     }
 
-    function caseCard(item, index) {
+    function caseCard(item) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "case-card";
@@ -1241,7 +1277,7 @@ HTML_TEMPLATE = r"""<!doctype html>
 
       const stage = document.createElement("div");
       stage.className = "preview-stage";
-      stage.dataset.index = String(index + 1).padStart(2, "0");
+      stage.dataset.index = String(item.archive_number).padStart(3, "0");
       const image = document.createElement("img");
       image.src = item.image_url;
       image.alt = (item.source_text || "字体案例") + "参考图";
@@ -1251,7 +1287,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       copy.className = "card-copy";
       const headingWrap = document.createElement("div");
       const heading = document.createElement("h2");
-      heading.textContent = item.source_text || "未命名字效";
+      heading.textContent = item.display_name || "未命名字效";
       const category = document.createElement("p");
       category.className = "category";
       category.textContent = item.category || "未记录字体分类";
@@ -1280,7 +1316,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         caseGrid.append(empty);
         return;
       }
-      items.forEach((item, index) => caseGrid.append(caseCard(item, index)));
+      items.forEach((item) => caseGrid.append(caseCard(item)));
     }
 
     function setText(id, value, fallback) {
