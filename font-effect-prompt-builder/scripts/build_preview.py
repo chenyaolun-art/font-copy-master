@@ -5,9 +5,14 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
+
+
+TARGET_TEXT_TOKEN = "__FONT_EFFECT_TARGET_TEXT__"
+LINE_COUNT_TOKEN = "__FONT_EFFECT_LINE_COUNT__"
 
 
 class PreviewError(Exception):
@@ -59,6 +64,46 @@ def parse_case_markdown(raw):
         "final_prompt": _section_body(sections, "Final prompt"),
         "classification_notes": _section_body(sections, "Classification notes"),
     }
+
+
+def make_prompt_template(prompt, target_text="", source_text=""):
+    """Replace archived copy with tokens and append a high-priority layout override."""
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return ""
+    templated = prompt
+    for candidate in (target_text, source_text):
+        if not candidate:
+            continue
+        quoted = "「{}」".format(candidate)
+        if quoted in templated:
+            templated = templated.replace(
+                quoted,
+                "「{}」".format(TARGET_TEXT_TOKEN),
+                1,
+            )
+            break
+    if TARGET_TEXT_TOKEN not in templated:
+        templated, count = re.subn(
+            r"「.*?」",
+            "「{}」".format(TARGET_TEXT_TOKEN),
+            templated,
+            count=1,
+            flags=re.DOTALL,
+        )
+        if count == 0:
+            templated = (
+                "製作一張孤立的美術字資產，唯一目標是渲染精確文字"
+                "「{}」。\n\n{}".format(TARGET_TEXT_TOKEN, templated)
+            )
+    override = (
+        "本次文案排版覆盖上述针对旧文案的行数、字距、行距、字号与单字比例描述："
+        "严格依照输入中的 {} 行换行排版；各行默认保持统一字号、字重和字形比例，"
+        "不制造单字大小差异，仅可调整字距、行距与整体缩放以适配画布。"
+        "若原提示词与本次文案排版冲突，以本段为准；其余字形、材质、色彩、描边、"
+        "阴影、平滑降噪和透明背景要求全部保留。"
+    ).format(LINE_COUNT_TOKEN)
+    return "{}\n\n{}".format(templated.rstrip(), override)
 
 
 def _read_index(index_path):
@@ -124,6 +169,11 @@ def load_cases(library):
         case["image_url"] = image_url
         case["style_tags"] = list(record.get("style_tags") or [])
         case["effect_tags"] = list(record.get("effect_tags") or [])
+        case["prompt_template"] = make_prompt_template(
+            parsed.get("final_prompt") or parsed.get("original_prompt"),
+            target_text=parsed.get("target_text", ""),
+            source_text=parsed.get("source_text", ""),
+        )
         cases.append(case)
     return cases, warnings
 
@@ -179,7 +229,8 @@ HTML_TEMPLATE = r"""<!doctype html>
 
     button,
     input,
-    select {
+    select,
+    textarea {
       font: inherit;
     }
 
@@ -191,6 +242,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     button:focus-visible,
     input:focus-visible,
     select:focus-visible,
+    textarea:focus-visible,
     .case-card:focus-visible {
       outline: 2px solid var(--ice);
       outline-offset: 3px;
@@ -615,6 +667,79 @@ HTML_TEMPLATE = r"""<!doctype html>
       text-wrap: pretty;
     }
 
+    .target-builder {
+      margin: 2px 0 22px;
+      padding: 18px;
+      border: 1px solid rgba(185, 217, 220, 0.22);
+      border-radius: 4px;
+      background: rgba(185, 217, 220, 0.045);
+    }
+
+    .target-builder label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--paper);
+      font: 500 21px/1.25 var(--display);
+    }
+
+    .builder-help {
+      margin: 0 0 12px !important;
+      color: #9ea9b4 !important;
+      font-size: 12px !important;
+    }
+
+    #target-copy-input {
+      display: block;
+      width: 100%;
+      min-height: 108px;
+      padding: 13px 14px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--paper);
+      background: #09131f;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    #target-copy-input::placeholder {
+      color: #737e8b;
+    }
+
+    .builder-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+    .builder-shortcut {
+      color: #7f8b98;
+      font: 10px/1.4 var(--mono);
+    }
+
+    .generate-button {
+      min-height: 44px;
+      padding: 9px 16px;
+      border: 1px solid rgba(215, 195, 154, 0.48);
+      border-radius: 4px;
+      color: #15110a;
+      background: var(--gold);
+      font-weight: 650;
+    }
+
+    .generate-button:hover {
+      background: #ead7ae;
+    }
+
+    .target-status {
+      min-height: 20px;
+      margin: 8px 0 0 !important;
+      color: var(--ice) !important;
+      font-size: 12px !important;
+    }
+
     .prompt-tabs {
       display: flex;
       gap: 8px;
@@ -758,6 +883,15 @@ HTML_TEMPLATE = r"""<!doctype html>
         width: 100%;
         margin-left: 0;
       }
+
+      .builder-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .generate-button {
+        width: 100%;
+      }
     }
 
     @media (max-width: 520px) {
@@ -876,9 +1010,20 @@ HTML_TEMPLATE = r"""<!doctype html>
         </section>
         <section class="detail-section">
           <h3>GPT Image 2 Prompt</h3>
+          <div class="target-builder">
+            <label for="target-copy-input">换成你的目标文案</label>
+            <p class="builder-help">输入时直接换行，生成结果会保留当前字体的字形、材质与平滑降噪规则。</p>
+            <textarea id="target-copy-input" placeholder="在这里输入要生成的文字…" spellcheck="false"></textarea>
+            <div class="builder-actions">
+              <span class="builder-shortcut">⌘ / Ctrl + Enter 快速生成</span>
+              <button id="generate-prompt" class="generate-button" type="button">生成生图提示词</button>
+            </div>
+            <p id="target-status" class="target-status" role="status"></p>
+          </div>
           <div class="prompt-tabs" role="tablist" aria-label="提示词版本">
             <button id="original-tab" class="tab-button" type="button" role="tab" aria-selected="false">原始提示词</button>
             <button id="final-tab" class="tab-button" type="button" role="tab" aria-selected="true">终版提示词</button>
+            <button id="generated-tab" class="tab-button" type="button" role="tab" aria-selected="false" hidden>你的提示词</button>
             <button id="copy-prompt" class="copy-button" type="button">复制终版提示词</button>
           </div>
           <pre id="prompt-box" class="prompt-box" tabindex="0"></pre>
@@ -896,7 +1041,9 @@ HTML_TEMPLATE = r"""<!doctype html>
       sort: "newest",
       selected: { language: new Set(), style: new Set(), effect: new Set() },
       activeCase: null,
-      promptKind: "final"
+      promptKind: "final",
+      targetText: "",
+      generatedPrompt: ""
     };
 
     const labels = {
@@ -916,9 +1063,15 @@ HTML_TEMPLATE = r"""<!doctype html>
     const dialog = document.getElementById("detail-dialog");
     const originalTab = document.getElementById("original-tab");
     const finalTab = document.getElementById("final-tab");
+    const generatedTab = document.getElementById("generated-tab");
     const copyButton = document.getElementById("copy-prompt");
     const promptBox = document.getElementById("prompt-box");
     const copyStatus = document.getElementById("copy-status");
+    const targetCopyInput = document.getElementById("target-copy-input");
+    const generateButton = document.getElementById("generate-prompt");
+    const targetStatus = document.getElementById("target-status");
+    const TARGET_TEXT_TOKEN = "__FONT_EFFECT_TARGET_TEXT__";
+    const LINE_COUNT_TOKEN = "__FONT_EFFECT_LINE_COUNT__";
 
     function unique(values) {
       return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
@@ -1061,22 +1214,60 @@ HTML_TEMPLATE = r"""<!doctype html>
       document.getElementById(id).textContent = value || fallback;
     }
 
+    function buildTargetPrompt(item, targetText) {
+      const normalized = String(targetText || "").replace(/\r\n?/g, "\n").trim();
+      if (!normalized) return "";
+      const lineCount = normalized.split("\n").length;
+      const template = item.prompt_template || item.final_prompt || item.original_prompt || "";
+      return template
+        .split(TARGET_TEXT_TOKEN).join(normalized)
+        .split(LINE_COUNT_TOKEN).join(String(lineCount));
+    }
+
     function renderPrompt() {
       if (!state.activeCase) return;
-      const finalSelected = state.promptKind === "final";
-      const value = finalSelected
-        ? state.activeCase.final_prompt
-        : state.activeCase.original_prompt;
-      originalTab.setAttribute("aria-selected", String(!finalSelected));
-      finalTab.setAttribute("aria-selected", String(finalSelected));
+      const values = {
+        original: state.activeCase.original_prompt,
+        final: state.activeCase.final_prompt,
+        generated: state.generatedPrompt
+      };
+      const value = values[state.promptKind];
+      originalTab.setAttribute("aria-selected", String(state.promptKind === "original"));
+      finalTab.setAttribute("aria-selected", String(state.promptKind === "final"));
+      generatedTab.hidden = !state.generatedPrompt;
+      generatedTab.setAttribute("aria-selected", String(state.promptKind === "generated"));
       promptBox.textContent = value || "此案例没有记录该版本提示词。";
-      copyButton.textContent = finalSelected ? "复制终版提示词" : "复制原始提示词";
+      const copyLabels = {
+        original: "复制原始提示词",
+        final: "复制终版提示词",
+        generated: "复制你的提示词"
+      };
+      copyButton.textContent = copyLabels[state.promptKind];
       copyStatus.textContent = "";
+    }
+
+    function generateTargetPrompt() {
+      const targetText = targetCopyInput.value.replace(/\r\n?/g, "\n").trim();
+      if (!targetText) {
+        targetStatus.textContent = "请先输入目标文案。";
+        targetCopyInput.focus();
+        return;
+      }
+      state.targetText = targetText;
+      state.generatedPrompt = buildTargetPrompt(state.activeCase, targetText);
+      state.promptKind = "generated";
+      targetStatus.textContent = "已按当前字效生成，可在下方检查并复制。";
+      renderPrompt();
     }
 
     function openDetail(item) {
       state.activeCase = item;
-      state.promptKind = "final";
+      state.generatedPrompt = state.targetText ? buildTargetPrompt(item, state.targetText) : "";
+      state.promptKind = state.generatedPrompt ? "generated" : "final";
+      targetCopyInput.value = state.targetText;
+      targetStatus.textContent = state.generatedPrompt
+        ? "已沿用上一次输入，并切换为当前字效。"
+        : "";
       setText("detail-id", item.case_id, "未记录案例编号");
       setText("detail-title", item.source_text, "未命名字效");
       setText(
@@ -1100,9 +1291,7 @@ HTML_TEMPLATE = r"""<!doctype html>
 
     async function copyPrompt() {
       if (!state.activeCase) return;
-      const value = state.promptKind === "final"
-        ? state.activeCase.final_prompt
-        : state.activeCase.original_prompt;
+      const value = promptBox.textContent;
       if (!value) {
         copyStatus.textContent = "当前没有可复制的提示词。";
         return;
@@ -1163,6 +1352,28 @@ HTML_TEMPLATE = r"""<!doctype html>
       renderPrompt();
     });
 
+    generatedTab.addEventListener("click", () => {
+      if (!state.generatedPrompt) return;
+      state.promptKind = "generated";
+      renderPrompt();
+    });
+
+    targetCopyInput.addEventListener("input", () => {
+      if (!state.generatedPrompt) return;
+      state.generatedPrompt = "";
+      if (state.promptKind === "generated") state.promptKind = "final";
+      targetStatus.textContent = "文案已修改，请重新生成。";
+      renderPrompt();
+    });
+
+    targetCopyInput.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        generateTargetPrompt();
+      }
+    });
+
+    generateButton.addEventListener("click", generateTargetPrompt);
     copyButton.addEventListener("click", copyPrompt);
     document.getElementById("close-dialog").addEventListener("click", () => dialog.close());
     dialog.addEventListener("click", (event) => {

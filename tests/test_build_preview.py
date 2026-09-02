@@ -109,6 +109,38 @@ FINAL PROMPT
         self.assertEqual(case["final_prompt"], "FINAL PROMPT")
         self.assertTrue(case["image_url"].startswith("data:image/png;base64,"))
 
+    def test_make_prompt_template_replaces_archived_target(self):
+        build_preview = load_preview_module(self)
+        prompt = (
+            "製作孤立美術字，唯一目標是渲染精確文字"
+            "「百日同行\n青丘再聚」。保留藍色筆觸。"
+        )
+
+        template = build_preview.make_prompt_template(
+            prompt,
+            target_text="百日同行\n青丘再聚",
+            source_text="萬頃琉璃",
+        )
+
+        self.assertIn(build_preview.TARGET_TEXT_TOKEN, template)
+        self.assertNotIn("百日同行", template)
+        self.assertIn("保留藍色筆觸", template)
+
+    def test_make_prompt_template_falls_back_to_quoted_prompt_text(self):
+        build_preview = load_preview_module(self)
+
+        template = build_preview.make_prompt_template(
+            "渲染精確文字「舊文案」，保留平滑金屬效果。",
+            target_text="未匹配文案",
+            source_text="另一段文字",
+        )
+
+        self.assertIn(
+            "渲染精確文字「{}」".format(build_preview.TARGET_TEXT_TOKEN),
+            template,
+        )
+        self.assertNotIn("舊文案", template)
+
     def test_invalid_jsonl_raises_preview_error(self):
         build_preview = load_preview_module(self)
         (self.library / "index.jsonl").write_text("{broken\n", encoding="utf-8")
@@ -140,6 +172,11 @@ FINAL PROMPT
         self.assertIn('id="search-input"', html)
         self.assertIn('id="case-grid"', html)
         self.assertIn('id="detail-dialog"', html)
+        self.assertIn('id="target-copy-input"', html)
+        self.assertIn('id="generate-prompt"', html)
+        self.assertIn('id="generated-tab"', html)
+        self.assertIn("function buildTargetPrompt", html)
+        self.assertIn("本次文案排版覆盖", html)
         self.assertIn("navigator.clipboard", html)
         self.assertNotIn("https://", html)
         self.assertNotIn("http://", html)
