@@ -34,3 +34,11 @@ python3 /絕對路徑/font-effect-prompt-builder/scripts/archive_case.py --metad
 ```
 
 成功 JSON 會提供 `case_id`、`case_dir` 和 `index_path`（索引）。重複的參考圖會因 SHA-256 去重而失敗，不可宣稱儲存成功。歸檔會保留原始副檔名但轉為小寫。
+
+歸檔成功後，使用回傳的 `index_path` 所在目錄作為 `--library`，重建離線預覽頁：
+
+```text
+python3 /絕對路徑/font-effect-prompt-builder/scripts/build_preview.py --library /絕對路徑/font-effect-prompt-builder/library
+```
+
+成功 JSON 會提供 `preview_path`、`case_count` 和 `warnings`。向使用者回報 `preview_path`；若 `warnings` 非空，摘要說明略過了哪些不完整案例。預覽頁重建失敗不改變歸檔已成功的事實，但必須回報失敗，且不可聲稱預覽頁已更新。

@@ -12,7 +12,7 @@ description: Use when a user provides a screenshot or reference image of stylize
 1. 依[視覺分析](references/visual-analysis.md)檢視圖片，依固定欄位報告：來源文字／語種／文字系統、字體候選／類別／信心／證據、字形改造、排版、效果層次與應排除元素。先說可觀察字形特徵；沒有證據不得宣稱確定。
 2. 撰寫一段原始文字的完整中文 GPT Image 2 提示詞。提示詞以繁體中文為主，原文以引號包住且逐字只出現一次。
 3. 只在缺少目標文案時詢問。取得後保留文案完全原樣，只調整為適合字數的排版，輸出一段最終完整提示詞；不生成圖片。
-4. 明確詢問是否要歸檔。僅在使用者清楚最終確認後，且有可讀的本機參考圖絕對路徑時，讀取[分類法](references/taxonomy.md)與[案例結構](references/case-schema.md)，建立符合結構的暫存 metadata JSON。解析本技能 `scripts/archive_case.py` 的絕對路徑，並以 metadata 與 image 的絕對路徑執行。成功才回報 `case_id`、`case_dir`、索引路徑；失敗不可聲稱已儲存。草稿、隨口同意或沉默都不是確認。
+4. 明確詢問是否要歸檔。僅在使用者清楚最終確認後，且有可讀的本機參考圖絕對路徑時，讀取[分類法](references/taxonomy.md)與[案例結構](references/case-schema.md)，建立符合結構的暫存 metadata JSON。解析本技能 `scripts/archive_case.py` 的絕對路徑，並以 metadata 與 image 的絕對路徑執行。歸檔成功後，立即以同一技能內的 `scripts/build_preview.py` 重建 `library/preview.html`。成功才回報 `case_id`、`case_dir`、索引路徑與預覽頁路徑；歸檔失敗不可聲稱已儲存。預覽頁重建失敗不撤銷已成功的歸檔，但必須清楚回報失敗原因。草稿、隨口同意或沉默都不是確認。
 
 ## 不變條件
 
