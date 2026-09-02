@@ -599,6 +599,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     .dialog-content {
       position: relative;
       overflow-y: auto;
+      scrollbar-gutter: stable;
       padding: 34px 34px 44px;
       border-left: 1px solid var(--line);
     }
@@ -770,10 +771,10 @@ HTML_TEMPLATE = r"""<!doctype html>
     }
 
     .prompt-box {
-      max-height: 310px;
+      max-height: none;
       margin: 0;
       padding: 16px;
-      overflow: auto;
+      overflow: visible;
       border: 1px solid var(--line);
       border-radius: 4px;
       color: #d5d9dc;

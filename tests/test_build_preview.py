@@ -181,6 +181,18 @@ FINAL PROMPT
         self.assertNotIn("https://", html)
         self.assertNotIn("http://", html)
 
+    def test_prompt_preview_expands_without_nested_scrolling(self):
+        build_preview = load_preview_module(self)
+
+        result = build_preview.build_gallery(self.library)
+        html = Path(result["preview_path"]).read_text(encoding="utf-8")
+        prompt_box_css = html.split("    .prompt-box {", 1)[1].split("    }", 1)[0]
+
+        self.assertIn("max-height: none;", prompt_box_css)
+        self.assertIn("overflow: visible;", prompt_box_css)
+        self.assertNotIn("max-height: 310px;", prompt_box_css)
+        self.assertNotIn("overflow: auto;", prompt_box_css)
+
     def test_empty_library_renders_empty_state(self):
         build_preview = load_preview_module(self)
         (self.library / "index.jsonl").write_text("", encoding="utf-8")
